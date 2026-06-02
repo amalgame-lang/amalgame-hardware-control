@@ -1,0 +1,143 @@
+namespace Amalgame.Hardware.Control
+
+// ── Amalgame.Hardware.Control — control & signal helpers ──
+//
+// Pure-Amalgame building blocks every robot / drone / 3D-printer needs
+// but rarely finds packaged cleanly: a PID loop, an IMU complementary
+// filter (gyro + accel → a stable angle), and signal smoothing. No
+// hardware, no dependency — feed them your sensor values, use the
+// output to drive motors/heaters.
+//
+//     import Amalgame.Hardware.Control
+//
+//     let pid = new Pid(2.0, 0.5, 0.1)
+//     pid.SetSetpoint(60.0)            // target (°C, °, rpm…)
+//     pid.SetLimits(0.0, 100.0)        // e.g. heater duty %
+//     // loop:
+//     let duty = pid.Update(measured, dt)
+
+// Classic PID controller with output clamping + anti-windup. `dt` is
+// the seconds elapsed since the previous Update.
+public class Pid {
+    private kp:       float
+    private ki:       float
+    private kd:       float
+    private setpoint: float
+    private integral: float
+    private prevErr:  float
+    private havePrev: bool
+    private outMin:   float
+    private outMax:   float
+
+    public Pid(kp: float, ki: float, kd: float) {
+        this.kp = kp
+        this.ki = ki
+        this.kd = kd
+        this.setpoint = 0.0
+        this.integral = 0.0
+        this.prevErr  = 0.0
+        this.havePrev = false
+        this.outMin   = 0.0 - 1000000000.0
+        this.outMax   = 1000000000.0
+    }
+
+    public void SetSetpoint(s: float) { this.setpoint = s }
+    public void SetGains(kp: float, ki: float, kd: float) { this.kp = kp; this.ki = ki; this.kd = kd }
+    public void SetLimits(lo: float, hi: float) { this.outMin = lo; this.outMax = hi }
+    public void Reset() { this.integral = 0.0; this.havePrev = false }
+
+    public float Update(measured: float, dt: float) {
+        let err: float = this.setpoint - measured
+        var deriv: float = 0.0
+        if (this.havePrev && dt > 0.0) { deriv = (err - this.prevErr) / dt }
+        this.prevErr = err
+        this.havePrev = true
+
+        this.integral = this.integral + err * dt
+        var out: float = this.kp * err + this.ki * this.integral + this.kd * deriv
+
+        // Clamp + simple anti-windup: if saturated, undo this step's
+        // integral so it can't keep growing.
+        if (out > this.outMax) { out = this.outMax; this.integral = this.integral - err * dt }
+        if (out < this.outMin) { out = this.outMin; this.integral = this.integral - err * dt }
+        return out
+    }
+}
+
+// Complementary filter: fuse a gyro rate (°/s) and an accelerometer
+// angle (°) into a drift-free, low-noise angle. `alpha` ≈ 0.98 trusts
+// the gyro short-term, the accelerometer long-term. The drone / self-
+// balancing-robot staple — pairs with amalgame-hardware-sensor's MPU6050.
+public class ComplementaryFilter {
+    private angle: float
+    private alpha: float
+    private seeded: bool
+
+    public ComplementaryFilter(alpha: float) {
+        this.alpha = alpha
+        this.angle = 0.0
+        this.seeded = false
+    }
+
+    public float Update(gyroRate: float, accAngle: float, dt: float) {
+        if (!this.seeded) { this.angle = accAngle; this.seeded = true; return this.angle }
+        this.angle = this.alpha * (this.angle + gyroRate * dt) + (1.0 - this.alpha) * accAngle
+        return this.angle
+    }
+
+    public float Angle() { return this.angle }
+    public void Reset() { this.seeded = false; this.angle = 0.0 }
+}
+
+// Fixed-window moving average — smooth noisy sensor readings.
+public class MovingAverage {
+    private buf:    List<float>
+    private size:   int
+    private idx:    int
+    private count:  int
+    private sum:    float
+
+    public MovingAverage(size: int) {
+        this.size = size
+        if (this.size < 1) { this.size = 1 }
+        this.buf = new List<float>()
+        var i: int = 0
+        while (i < this.size) { this.buf.Add(0.0); i = i + 1 }
+        this.idx = 0
+        this.count = 0
+        this.sum = 0.0
+    }
+
+    // Push a sample, return the current average.
+    public float Add(v: float) {
+        if (this.count == this.size) {
+            this.sum = this.sum - this.buf.Get(this.idx)
+        } else {
+            this.count = this.count + 1
+        }
+        this.buf.Set(this.idx, v)
+        this.sum = this.sum + v
+        this.idx = this.idx + 1
+        if (this.idx >= this.size) { this.idx = 0 }
+        return this.sum / this.count
+    }
+
+    public float Value() {
+        if (this.count == 0) { return 0.0 }
+        return this.sum / this.count
+    }
+}
+
+// Map a value from one range to another + clamp — the ubiquitous
+// Arduino map()/constrain(), in floats.
+public class Range {
+    public static float Map(x: float, inLo: float, inHi: float, outLo: float, outHi: float) {
+        if (inHi == inLo) { return outLo }
+        return outLo + (x - inLo) * (outHi - outLo) / (inHi - inLo)
+    }
+    public static float Clamp(x: float, lo: float, hi: float) {
+        if (x < lo) { return lo }
+        if (x > hi) { return hi }
+        return x
+    }
+}

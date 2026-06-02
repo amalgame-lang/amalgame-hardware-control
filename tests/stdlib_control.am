@@ -1,0 +1,42 @@
+namespace Tests
+
+import Amalgame.Hardware.Control
+
+public class Program {
+    public static void Main(string[] args) {
+        var fail: int = 0
+
+        // PID: P-only, setpoint 10, measured 0 → output 10*kp.
+        let pid: Pid = new Pid(1.0, 0.0, 0.0)
+        pid.SetSetpoint(10.0)
+        let u: float = pid.Update(0.0, 0.1)
+        if (u > 9.99 && u < 10.01) { Console.WriteLine("[PASS] pid p-term") } else { Console.WriteLine("[FAIL] pid " + String_FromFloat(u)); fail = fail + 1 }
+        let u2: float = pid.Update(10.0, 0.1)
+        if (u2 > (0.0 - 0.01) && u2 < 0.01) { Console.WriteLine("[PASS] pid at setpoint") } else { Console.WriteLine("[FAIL] pid at setpoint " + String_FromFloat(u2)); fail = fail + 1 }
+
+        // PID limits: huge error clamps to outMax.
+        let pid2: Pid = new Pid(100.0, 0.0, 0.0)
+        pid2.SetLimits(0.0, 50.0)
+        pid2.SetSetpoint(1000.0)
+        let u3: float = pid2.Update(0.0, 0.1)
+        if (u3 > 49.99 && u3 < 50.01) { Console.WriteLine("[PASS] pid clamp") } else { Console.WriteLine("[FAIL] pid clamp " + String_FromFloat(u3)); fail = fail + 1 }
+
+        // MovingAverage(3): 3,6,9 → 6.0
+        let ma: MovingAverage = new MovingAverage(3)
+        let _a1: float = ma.Add(3.0)
+        let _a2: float = ma.Add(6.0)
+        let a3: float = ma.Add(9.0)
+        if (a3 > 5.99 && a3 < 6.01) { Console.WriteLine("[PASS] moving average") } else { Console.WriteLine("[FAIL] moving average " + String_FromFloat(a3)); fail = fail + 1 }
+
+        // ComplementaryFilter: first call seeds to accel angle.
+        let cf: ComplementaryFilter = new ComplementaryFilter(0.98)
+        let ang: float = cf.Update(0.0, 45.0, 0.01)
+        if (ang > 44.99 && ang < 45.01) { Console.WriteLine("[PASS] comp filter seed") } else { Console.WriteLine("[FAIL] comp filter " + String_FromFloat(ang)); fail = fail + 1 }
+
+        // Range.Map(5, 0..10, 0..100) = 50
+        let m: float = Range.Map(5.0, 0.0, 10.0, 0.0, 100.0)
+        if (m > 49.99 && m < 50.01) { Console.WriteLine("[PASS] range map") } else { Console.WriteLine("[FAIL] range map " + String_FromFloat(m)); fail = fail + 1 }
+
+        if (fail == 0) { Console.WriteLine("control: all good") }
+    }
+}

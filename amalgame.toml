@@ -1,0 +1,24 @@
+# Package manifest — amalgame-hardware-control
+#
+# Pure-Amalgame control & signal-processing helpers — no hardware, no
+# dependency. The pieces every robot/drone/3D-printer needs:
+#
+#   Pid                  — PID controller (clamping + anti-windup)
+#   ComplementaryFilter  — fuse gyro + accel into a stable angle
+#   MovingAverage        — fixed-window smoothing
+#   Range                — Map() / Clamp() (Arduino map/constrain in floats)
+
+[package]
+name              = "amalgame-hardware-control"
+version           = "0.1.0"
+license           = "Apache-2.0"
+description       = "Pure-Amalgame control & signal helpers: PID, IMU complementary filter (gyro+accel→angle), moving average, map/clamp. For drones, balancing robots, 3D-printer heaters."
+authors           = ["Bastien Mouget"]
+required-amalgame = ">=0.8.72"
+schema-version    = 1
+
+[stdlib]
+classes   = ["Pid", "ComplementaryFilter", "MovingAverage", "Range"]
+header    = "facade-stub.h"
+namespace = "Amalgame.Hardware.Control"
+facade    = "facade.am"
